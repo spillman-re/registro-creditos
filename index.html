@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Créditos y Deudores</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        /* --- CONFIGURACIÓN GENERAL --- */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            /* Cambiado de top a bottom */
+            right: 20px;
+            z-index: 2000;
+            /* Esto asegura que si hay varios avisos, se apilen hacia arriba */
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* --- TARJETAS (CARDS) DE DEUDAS --- */
+        .card-deuda {
+            transition: transform 0.2s;
+        }
+
+        .card-deuda:hover {
+            transform: scale(1.02);
+        }
+
+        .card-deuda-moderna {
+            border: none;
+            border-radius: 15px;
+            background: #ffffff;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .card-deuda-moderna:hover {
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08) !important;
+            transform: translateY(-3px);
+        }
+
+        /* --- ELEMENTOS DE DISEÑO (BADGES, BARS) --- */
+        .badge-categoria {
+            background-color: #f0f2f5;
+            color: #495057;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+        }
+
+        .monto-principal {
+            font-size: 1.4rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .progress {
+            height: 6px;
+            border-radius: 10px;
+            background-color: #e9ecef;
+        }
+
+        /* --- HISTORIAL (TIMELINE) --- */
+        .timeline-item {
+            position: relative;
+            padding-left: 30px;
+            border-left: 2px solid #e9ecef;
+            padding-bottom: 20px;
+        }
+
+        .timeline-item::before {
+            content: "";
+            position: absolute;
+            left: -9px;
+            top: 5px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #198754;
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 2px #198754;
+        }
+
+        .abono-card-mini {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 12px 15px;
+            transition: background 0.2s;
+        }
+
+        .abono-card-mini:hover {
+            background: #f1f3f5;
+        }
+
+        /* --- CABECERA Y BUSCADOR --- */
+        .header-container {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+        }
+
+        .search-wrapper {
+            position: relative;
+        }
+
+        .search-input-modern {
+            border: 2px solid transparent;
+            border-radius: 15px;
+            padding: 15px 20px 15px 45px;
+            font-size: 1.1rem;
+            background-color: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .search-input-modern:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 8px 20px rgba(13, 110, 253, 0.15);
+            outline: none;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #adb5bd;
+            pointer-events: none;
+        }
+
+        /* --- BOTONES MODERNOS --- */
+        .btn-nuevo-cliente {
+            border-radius: 15px;
+            padding: 12px 25px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(25, 135, 84, 0.2);
+        }
+
+        .btn-nuevo-cliente:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(25, 135, 84, 0.3);
+        }
+
+        .header-title {
+            font-weight: 800;
+            color: #212529;
+            letter-spacing: -1px;
+        }
+
+        /* --- TARJETAS DE CLIENTE --- */
+        .card-cliente-moderna {
+            border: none;
+            border-radius: 20px;
+            background: #ffffff;
+            transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+            margin-bottom: 15px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-cliente-moderna:hover {
+            transform: scale(1.01) translateX(5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        .status-indicator {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+        }
+
+        .status-deuda {
+            background: #dc3545;
+        }
+
+        .status-limpio {
+            background: #198754;
+        }
+
+        .cliente-avatar {
+            width: 50px;
+            height: 50px;
+            background: #f0f2f5;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #0d6efd;
+            font-size: 1.2rem;
+        }
+
+        .saldo-pill {
+            background: rgba(220, 53, 69, 0.05);
+            color: #dc3545;
+            padding: 8px 15px;
+            border-radius: 12px;
+            font-weight: 800;
+            border: 1px solid rgba(220, 53, 69, 0.1);
+        }
+
+        .saldo-pill.limpio {
+            background: rgba(25, 135, 84, 0.05);
+            color: #198754;
+            border-color: rgba(25, 135, 84, 0.1);
+        }
+
+        /* --- MODALES MODERNOS --- */
+        .modal-moderno .modal-content {
+            border-radius: 25px;
+            border: none;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-moderno .modal-header {
+            border-bottom: none;
+            padding: 30px 30px 10px 30px;
+        }
+
+        .modal-moderno .modal-body {
+            padding: 10px 30px 30px 30px;
+        }
+
+        .input-group-moderno {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 5px 15px;
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .input-group-moderno:focus-within {
+            background: #fff;
+            border-color: #0d6efd;
+            box-shadow: 0 5px 15px rgba(13, 110, 253, 0.05);
+        }
+
+        .input-group-moderno span {
+            font-size: 1.2rem;
+            margin-right: 15px;
+            color: #adb5bd;
+        }
+
+        .input-group-moderno input {
+            border: none;
+            background: transparent;
+            width: 100%;
+            padding: 10px 0;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .input-group-moderno input:focus {
+            outline: none;
+        }
+
+        .btn-guardar-moderno {
+            background: linear-gradient(135deg, #0d6efd 0%, #004bb5 100%);
+            border: none;
+            border-radius: 15px;
+            padding: 15px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+
+        .btn-guardar-moderno:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(13, 110, 253, 0.3);
+        }
+
+        .modal-moderno select:focus,
+        .modal-moderno textarea:focus {
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        #deudaMonto {
+            color: #dc3545;
+            letter-spacing: -1px;
+        }
+
+        /* --- PERFIL DE CLIENTE ACTIVO --- */
+        .cliente-activo-header {
+            background: white;
+            border-radius: 20px;
+            padding: 20px 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            animation: fadeInDown 0.4s ease;
+        }
+
+        .btn-volver {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: #f0f2f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            margin-right: 20px;
+        }
+
+        .btn-volver:hover {
+            background: #e2e6ea;
+            transform: translateX(-3px);
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        #modalAbono .btn-guardar-moderno {
+            background: linear-gradient(135deg, #198754 0%, #0f5132 100%);
+        }
+
+        .saldo-pill {
+            background: rgba(220, 53, 69, 0.05);
+            color: #dc3545;
+            padding: 5px 15px;
+            /* Bajamos un poco el padding superior/inferior */
+            border-radius: 12px;
+            font-weight: 800;
+            border: 1px solid rgba(220, 53, 69, 0.1);
+            line-height: 1.2;
+            /* Para que las dos líneas de moneda no se separen mucho */
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+
+    <div class="container py-4">
+        <div class="header-container mt-4">
+            <div class="row align-items-center">
+                <div class="col-lg-12 mb-4">
+                    <h1 class="header-title d-flex align-items-center">
+                        <span class="text-primary me-2">Lesly Salon</span>
+                        <span class="fs-4 text-muted fw-light">| Deudores</span>
+                    </h1>
+                </div>
+
+                <div class="col-md-8">
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-2">
+                        <small class="text-muted fw-bold">TASA DE CAMBIO DOLAR: <span id="txtTasaActual"
+                                class="text-primary">...</span></small>
+                        <button class="btn btn-sm btn-outline-secondary border-0" style="font-size: 0.7rem;"
+                            onclick="pedirNuevaTasa()">Actualizar Tasa</button>
+                    </div>
+                    <div class="search-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="busquedaCliente" class="form-control search-input-modern w-100"
+                            placeholder="Escribe el nombre de un cliente...">
+                    </div>
+                </div>
+
+                <div class="col-md-4 mt-3 mt-md-0">
+                    <button
+                        class="btn btn-success btn-nuevo-cliente w-100 d-flex align-items-center justify-content-center"
+                        data-bs-toggle="modal" data-bs-target="#modalNuevoCliente">
+                        <span class="fs-5 me-2">+</span> NUEVO CLIENTE
+                    </button>
+                </div>
+            </div>
+        </div>        
+
+        <div id="panelDeudas" class="mt-4">
+            <p class="text-muted text-center">Inicia una búsqueda para gestionar cuentas.</p>
+        </div>
+
+        <div class="row g-3 mb-4" id="seccionReportes">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm"
+                    style="border-radius: 20px; background: linear-gradient(45deg, #1e3c72, #2a5298); color: white;">
+                    <div class="card-body p-4 text-center">
+                        <small class="opacity-75 text-uppercase fw-bold">Cartera Total Pendiente</small>
+                        <h2 id="reporteTotal" class="display-6 fw-bold mb-0">C$ 0.00</h2>
+                        <div id="reporteTotalUSD" class="opacity-75 fs-5">($ 0.00)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 20px;">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3"><span class="me-2">🏆</span>Top 3 Deudores</h6>
+                        <div id="listaTopClientes">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100" style="border-radius: 20px;">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3"><span class="me-2">📊</span>Por Categoría</h6>
+                        <div id="listaCategorias" style="font-size: 0.85rem;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <div class="modal fade modal-moderno" id="modalNuevoCliente" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header d-flex flex-column align-items-start">
+                    <h3 class="fw-bold mb-1">Nuevo Cliente</h3>
+                    <p class="text-muted small">Registra los datos básicos para empezar a gestionar sus deudas.</p>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group-moderno">
+                        <span>👤</span>
+                        <input type="text" id="nuevoNombre" placeholder="Nombre completo del cliente"
+                            autocomplete="off">
+                    </div>
+                    <div class="input-group-moderno">
+                        <span>📞</span>
+                        <input type="text" id="nuevoTelefono" placeholder="Número de teléfono" autocomplete="off">
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="button" id="btnGuardarCliente" class="btn btn-primary btn-guardar-moderno">GUARDAR
+                            CLIENTE</button>
+                        <button type="button" class="btn btn-link text-muted mt-2 btn-sm text-decoration-none"
+                            data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-moderno" id="modalEditarCliente" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header d-flex flex-column align-items-start">
+                    <h3 class="fw-bold mb-1 text-primary">Editar Cliente</h3>
+                    <p class="text-muted small">Modifica la información del cliente seleccionado.</p>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group-moderno">
+                        <span>👤</span>
+                        <input type="text" id="editNombre" placeholder="Nombre completo">
+                    </div>
+                    <div class="input-group-moderno">
+                        <span>📞</span>
+                        <input type="text" id="editTelefono" placeholder="Número de teléfono">
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="button" id="btnActualizarCliente"
+                            class="btn btn-primary btn-guardar-moderno">ACTUALIZAR DATOS</button>
+                        <button type="button" class="btn btn-link text-danger mt-2 btn-sm text-decoration-none"
+                            onclick="confirmarEliminarCliente()">Eliminar Cliente Permanentemente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalConfirmarEliminar" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+                <div class="modal-body text-center p-4">
+                    <div class="text-danger mb-3" style="font-size: 3rem;">⚠️</div>
+                    <h5 class="fw-bold">¿Estás seguro?</h5>
+                    <p class="text-muted small">Esta acción borrará al cliente y todas sus deudas de forma permanente.
+                    </p>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-danger btn-guardar-moderno py-2"
+                            onclick="ejecutarEliminacion()">SÍ, ELIMINAR</button>
+                        <button type="button" class="btn btn-link text-muted btn-sm text-decoration-none"
+                            data-bs-dismiss="modal">No, cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-moderno" id="modalNuevaDeuda" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header d-flex flex-column align-items-start bg-primary text-white"
+                    style="border-radius: 25px 25px 5px 5px;">
+                    <h3 class="fw-bold mb-1">Registrar Crédito</h3>
+                    <p class="small opacity-75">Asigna una nueva deuda a una categoría específica.</p>
+                </div>
+                <div class="modal-body mt-3">
+                    <input type="hidden" id="deudaClienteId">
+                    <label class="form-label small fw-bold text-muted ps-2">Categoría (Sobre)</label>
+                    <div class="input-group-moderno mb-3">
+                        <span>📂</span>
+                        <select id="deudaCategoria" class="form-select border-0 bg-transparent fw-bold text-primary"
+                            style="box-shadow: none;">
+                            <option value="Cabello">Cabello</option>
+                            <option value="Vitaminas">Vitaminas</option>
+                            <option value="Joyas">Joyas</option>
+                            <option value="Herramientas">Herramientas</option>
+                            <option value="Cartera">Cartera</option>
+                            <option value="Farmasi">Farmasi</option>
+                            <option value="Perfumes">Perfumes</option>
+                            <option value="Servicios">Servicios</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <label class="form-label small fw-bold text-muted ps-2">Detalle de productos</label>
+                    <div class="input-group-moderno mb-3 align-items-start">
+                        <span class="mt-2">📝</span>
+                        <textarea id="deudaDescripcion" class="form-control border-0 bg-transparent" rows="2"
+                            placeholder="Ej: 1 Shampoo, 2 vitaminas..." style="box-shadow: none;"></textarea>
+                    </div>
+                    <label class="form-label small fw-bold text-muted ps-2">Monto del Crédito</label>
+                    <div class="input-group-moderno mb-1">
+                        <select id="monedaDeuda" class="border-0 bg-transparent fw-bold text-primary me-2"
+                            style="outline:none;">
+                            <option value="COR">C$</option>
+                            <option value="USD">$</option>
+                        </select>
+                        <input type="number" id="deudaMonto" class="fs-4 fw-bold text-danger" placeholder="0.00">
+                    </div>
+                    <small id="calcDeuda" class="text-muted ps-2" style="font-size: 0.75rem;"></small>
+                    <div class="d-grid mt-4">
+                        <button type="button" id="btnGuardarDeuda"
+                            class="btn btn-primary btn-guardar-moderno py-3">GENERAR DEUDA</button>
+                        <button type="button" class="btn btn-link text-muted mt-2 btn-sm text-decoration-none"
+                            data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-moderno" id="modalEditarDeuda" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header d-flex flex-column align-items-start">
+                    <h3 class="fw-bold mb-1 text-primary">Editar Deuda</h3>
+                    <p class="text-muted small">Modifica el concepto de la deuda.</p>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group-moderno">
+                        <span>📝</span>
+                        <input type="text" id="editDeudaConcepto" placeholder="Concepto (ej. Tinte + Secado)">
+                    </div>
+                    <div class="input-group-moderno" style="background-color: #e9ecef; opacity: 0.7;">
+                        <span>C$</span>
+                        <input type="number" id="editDeudaMonto" readonly
+                            title="El monto no se puede editar si ya fue registrado">
+                    </div>
+                    <small class="text-muted d-block mt-1 ps-2" style="font-size: 0.7rem;">* Por seguridad contable, el
+                        monto no es editable.</small>
+                    <div class="d-grid mt-4">
+                        <button type="button" id="btnActualizarDeuda"
+                            class="btn btn-primary btn-guardar-moderno">GUARDAR CAMBIOS</button>
+                        <button type="button" class="btn btn-link text-danger mt-2 btn-sm text-decoration-none"
+                            onclick="confirmarEliminarDeuda()">Eliminar esta deuda permanentemente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalConfirmarEliminarDeuda" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+                <div class="modal-body text-center p-4">
+                    <div class="text-danger mb-3" style="font-size: 3rem;">🗑️</div>
+                    <h5 class="fw-bold">¿Eliminar deuda?</h5>
+                    <p class="text-muted small">Se borrará el registro y todos los abonos asociados.</p>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-danger btn-guardar-moderno py-2"
+                            onclick="ejecutarEliminacionDeuda()">SÍ, ELIMINAR</button>
+                        <button type="button" class="btn btn-link text-muted btn-sm text-decoration-none"
+                            data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade modal-moderno" id="modalAbono" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header d-flex flex-column align-items-center bg-success text-white"
+                    style="border-radius: 25px 25px 5px 5px;">
+                    <h3 class="fw-bold mb-0">Abonar</h3>
+                    <p class="small opacity-75 mb-0">Registrar entrada de dinero</p>
+                </div>
+                <div class="modal-body text-center pt-4">
+                    <input type="hidden" id="abonoDeudaId">
+                    <div class="mb-4">
+                        <p class="text-muted small mb-1 text-uppercase fw-bold">Saldo Pendiente</p>
+                        <h2 id="txtSaldoActual" class="fw-extrabold text-primary mb-0">C$ 0.00</h2>
+                    </div>
+                    <div class="input-group-moderno mb-1">
+                        <select id="monedaAbono" class="border-0 bg-transparent fw-bold text-success me-2"
+                            style="outline:none;">
+                            <option value="COR">C$</option>
+                            <option value="USD">$</option>
+                        </select>
+                        <input type="number" id="abonoMonto" class="fs-3 fw-bold text-success" placeholder="0.00">
+                    </div>
+                    <small id="calcAbono" class="text-muted" style="font-size: 0.75rem;"></small>
+                    <div class="d-grid mt-4">
+                        <button type="button" id="btnGuardarAbono"
+                            class="btn btn-success btn-guardar-moderno py-3">CONFIRMAR PAGO</button>
+                        <button type="button" class="btn btn-link text-muted mt-2 btn-sm text-decoration-none"
+                            data-bs-dismiss="modal">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalHistorialAbonos" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-secondary">Recibos de Pago</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="listaAbonos" class="ps-2 pt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="render.js"></script>
+    <script>
+        // Esta función conecta el botón del HTML con la lógica del JS
+        async function pedirNuevaTasa() {
+            const tasaActual = document.getElementById('txtTasaActual').innerText;
+            const nueva = prompt("Ingrese la nueva tasa de cambio:", tasaActual);
+
+            if (nueva !== null && nueva !== "" && !isNaN(nueva)) {
+                // Llamamos a la función que está en render.js
+                await window.cambiarTasa(nueva);
+            }
+        }
+    </script>
+</body>
+
+</html>
