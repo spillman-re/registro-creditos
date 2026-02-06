@@ -23,18 +23,18 @@ function mostrarToast(mensaje, color = 'bg-primary') {
             <div class="d-flex"><div class="toast-body">${mensaje}</div></div>
         </div>`;
     contenedor.insertAdjacentHTML('beforeend', html);
-    setTimeout(() => { const el = document.getElementById(id); if(el) el.remove(); }, 3000);
+    setTimeout(() => { const el = document.getElementById(id); if (el) el.remove(); }, 3000);
 }
 
 // Formateadores de moneda
-const fC$ = (m) => `C$ ${parseFloat(m).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-const fUS = (m) => `$ ${(parseFloat(m) / tasaCambio).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+const fC$ = (m) => `C$ ${parseFloat(m).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fUS = (m) => `$ ${(parseFloat(m) / tasaCambio).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
  * --- GESTIÓN DE CLIENTES ---
  */
 
-async function actualizarListaClientes(filtro = '') {    
+async function actualizarListaClientes(filtro = '') {
     const { data: clientes, error } = await _supabase
         .from('clientes')
         .select(`*, deudas(saldo_pendiente)`)
@@ -47,7 +47,7 @@ async function actualizarListaClientes(filtro = '') {
     }
 
     const panel = document.getElementById('panelDeudas');
-    
+
     if (clientes.length === 0) {
         panel.innerHTML = `
             <div class="text-center py-5 opacity-50">
@@ -60,32 +60,34 @@ async function actualizarListaClientes(filtro = '') {
     panel.innerHTML = clientes.map(c => {
         const saldo_total = c.deudas.reduce((acc, d) => acc + parseFloat(d.saldo_pendiente), 0);
         const iniciales = c.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        const esDeudor = saldo_total > 0;
 
         return `
-        <div class="card card-cliente-moderna shadow-sm mb-3" onclick="verDetalle(${c.id})">
-            <div class="status-indicator ${esDeudor ? 'status-deuda' : 'status-limpio'}"></div>
-            <div class="card-body p-3">
-                <div class="row align-items-center">
-                    <div class="col-auto">
-                        <div class="cliente-avatar">${iniciales}</div>
-                    </div>
-                    <div class="col">
-                        <h5 class="mb-0 fw-bold text-dark">${c.nombre}</h5>
-                        <small class="text-muted">📞 ${c.telefono || 'Sin número'}</small>
-                    </div>
-                    <div class="col-auto text-end">
-                        <div class="saldo-pill ${!esDeudor ? 'limpio' : ''}">
-                            <div class="fw-bold">${fC$(saldo_total)}</div>
-                            <div style="font-size: 0.7rem; opacity: 0.8;">${fUS(saldo_total)}</div>
-                        </div>
-                    </div>
-                    <div class="col-auto ps-0">
-                        <div class="text-primary fs-4">›</div>
+    <div class="card card-cliente-moderna shadow-sm mb-2" onclick="verDetalle(${c.id})">
+        <div class="status-indicator ${saldo_total > 0 ? 'status-deuda' : 'status-limpio'}"></div>
+        <div class="card-body">
+            <div class="fila-cliente">
+                <div class="col-auto">
+                    <div class="cliente-avatar" style="width: 40px; height: 40px; font-size: 0.9rem;">${iniciales}</div>
+                </div>
+                
+                <div class="info-principal">
+                    <h5 class="nombre-cliente fw-bold text-dark">${c.nombre}</h5>
+                    <small class="text-muted">📞 ${c.telefono || '---'}</small>
+                </div>
+                
+                <div class="contenedor-saldo">
+                    <div class="saldo-pill ${saldo_total <= 0 ? 'limpio' : ''}" style="padding: 4px 8px;">
+                        <div class="fw-bold" style="font-size: 0.9rem;">${fC$(saldo_total)}</div>
+                        <div style="font-size: 0.65rem; opacity: 0.8;">${fUS(saldo_total)}</div>
                     </div>
                 </div>
+
+                <div class="col-auto ps-1">
+                    <span class="text-primary" style="opacity: 0.5;">›</span>
+                </div>
             </div>
-        </div>`;
+        </div>
+    </div>`;
     }).join('');
     document.getElementById('seccionReportes').style.display = 'flex';
 }
@@ -97,13 +99,13 @@ document.getElementById('btnGuardarCliente').addEventListener('click', async () 
     if (!nombre) return mostrarToast('El nombre es obligatorio', 'bg-danger');
 
     const { error } = await _supabase.from('clientes').insert([{ nombre, telefono }]);
-    
+
     if (!error) {
         mostrarToast('Cliente guardado con éxito', 'bg-success');
         document.getElementById('nuevoNombre').value = '';
         document.getElementById('nuevoTelefono').value = '';
         bootstrap.Modal.getInstance(document.getElementById('modalNuevoCliente')).hide();
-        actualizarListaClientes(); 
+        actualizarListaClientes();
     }
 });
 
@@ -116,7 +118,7 @@ function abrirModalEditar(nombre, telefono) {
 document.getElementById('btnActualizarCliente').addEventListener('click', async () => {
     const nombre = document.getElementById('editNombre').value;
     const telefono = document.getElementById('editTelefono').value;
-    
+
     const { error } = await _supabase
         .from('clientes')
         .update({ nombre, telefono })
@@ -179,7 +181,7 @@ async function verDetalle(clienteId) {
             const mTotal = parseFloat(d.monto_total);
             const porcentajePagado = ((mTotal - sPendiente) / mTotal) * 100;
             const colorTextoSaldo = sPendiente > 0 ? 'text-danger' : 'text-success';
-            const descSegura = d.descripcion ? d.descripcion.replace(/['"\\`]/g, '').replace(/\n/g, ' ') : ''; 
+            const descSegura = d.descripcion ? d.descripcion.replace(/['"\\`]/g, '').replace(/\n/g, ' ') : '';
 
             html += `
             <div class="col-md-6 mb-4">
@@ -225,7 +227,7 @@ function abrirModalDeuda() {
 document.getElementById('btnGuardarDeuda').onclick = async () => {
     let montoRaw = parseFloat(document.getElementById('deudaMonto').value);
     const moneda = document.getElementById('monedaDeuda').value;
-    
+
     // Si es dólar, convertimos a córdobas para la DB
     const montoFinal = moneda === "USD" ? montoRaw * tasaCambio : montoRaw;
 
@@ -259,7 +261,7 @@ document.getElementById('btnActualizarDeuda').addEventListener('click', async ()
     const { error } = await _supabase.from('deudas').update({ descripcion: document.getElementById('editDeudaConcepto').value }).eq('id', deudaSeleccionadaId);
     if (!error) {
         bootstrap.Modal.getInstance(document.getElementById('modalEditarDeuda')).hide();
-        verDetalle(clienteSeleccionadoId); 
+        verDetalle(clienteSeleccionadoId);
     }
 });
 
@@ -278,12 +280,12 @@ async function ejecutarEliminacionDeuda() {
 function abrirAbono(id, saldo) {
     deudaSeleccionadaId = id;
     saldoActualDeuda = parseFloat(saldo);
-    
+
     // Limpiar campos y mostrar saldo dual en el modal
     document.getElementById('abonoMonto').value = '';
     document.getElementById('calcAbono').innerText = '';
     document.getElementById('monedaAbono').value = 'COR'; // Reset a Córdobas
-    
+
     document.getElementById('txtSaldoActual').innerHTML = `
         ${fC$(saldo)}<br>
         <small class="text-muted">${fUS(saldo)}</small>
@@ -310,7 +312,7 @@ function configurarConvertidorAbono() {
 }
 
 // ÚNICO EVENTO DE GUARDADO (Elimina cualquier otro .onclick o .addEventListener previo)
-document.getElementById('btnGuardarAbono').onclick = async function() {
+document.getElementById('btnGuardarAbono').onclick = async function () {
     const inputMonto = document.getElementById('abonoMonto');
     const montoRaw = parseFloat(inputMonto.value);
     const moneda = document.getElementById('monedaAbono').value;
@@ -330,22 +332,22 @@ document.getElementById('btnGuardarAbono').onclick = async function() {
     // 1. Registrar el abono en la base de datos
     const { error: errorAbono } = await _supabase
         .from('abonos')
-        .insert([{ 
-            deuda_id: deudaSeleccionadaId, 
+        .insert([{
+            deuda_id: deudaSeleccionadaId,
             monto: montoFinalCordobas // Siempre guardamos en C$ para la contabilidad
         }]);
 
     if (!errorAbono) {
         // 2. Llamar a la función SQL de Supabase para restar
-        const { error: errorRPC } = await _supabase.rpc('registrar_pago', { 
-            p_deuda_id: deudaSeleccionadaId, 
-            p_monto: montoFinalCordobas 
+        const { error: errorRPC } = await _supabase.rpc('registrar_pago', {
+            p_deuda_id: deudaSeleccionadaId,
+            p_monto: montoFinalCordobas
         });
 
         if (!errorRPC) {
             bootstrap.Modal.getInstance(document.getElementById('modalAbono')).hide();
             verDetalle(clienteSeleccionadoId);
-            mostrarToast(`Abono de ${moneda === 'USD' ? '$'+montoRaw : 'C$'+montoRaw} guardado`, 'bg-success');
+            mostrarToast(`Abono de ${moneda === 'USD' ? '$' + montoRaw : 'C$' + montoRaw} guardado`, 'bg-success');
             cargarReportes();
         }
     } else {
@@ -396,7 +398,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // 2. Cargar la lista de clientes (ahora usará la tasaCambio real)
-    cargarReportes(); 
+    cargarReportes();
     actualizarListaClientes();
 });
 
@@ -419,11 +421,11 @@ window.cambiarTasa = async (nueva) => {
     } else {
         // 3. Refrescamos la interfaz
         actualizarListaClientes();
-        
+
         // Actualizamos el texto en el index si existe
         const elTasa = document.getElementById('txtTasaActual');
         if (elTasa) elTasa.innerText = nuevaTasaNum.toFixed(2);
-        
+
         mostrarToast(`Tasa guardada: ${nuevaTasaNum}`, "bg-info");
     }
 };
