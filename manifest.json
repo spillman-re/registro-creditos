@@ -1,0 +1,15 @@
+{
+  "name": "Lesly Salon Créditos",
+  "short_name": "Salonix",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#0d6efd",
+  "icons": [
+    {
+      "src": "https://cvwkjtwwewxpjoftcdwu.supabase.co/storage/v1/object/public/logo/icono.jpg",
+      "sizes": "512x512",
+      "type": "image/jpg"
+    }
+  ]
+}
