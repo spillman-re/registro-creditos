@@ -92,56 +92,163 @@ async function actualizarListaClientes(filtro = '') {
     document.getElementById('seccionReportes').style.display = 'flex';
 }
 
-document.getElementById('btnGuardarCliente').addEventListener('click', async () => {
-    const nombre = document.getElementById('nuevoNombre').value;
-    const telefono = document.getElementById('nuevoTelefono').value;
+// Agregar un cliente
+document.getElementById('btnGuardarCliente').onclick = async function () {
+    const btn = this;
+    const textoOriginal = 'Guardar Cliente'; // Definimos el texto manual para evitar errores
+
+    const nombre = document.getElementById('nuevoNombre').value.trim();
+    const telefono = document.getElementById('nuevoTelefono').value.trim();
 
     if (!nombre) return mostrarToast('El nombre es obligatorio', 'bg-danger');
 
-    const { error } = await _supabase.from('clientes').insert([{ nombre, telefono }]);
+    // Bloqueo y Spinner
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Guardando...`;
 
-    if (!error) {
-        mostrarToast('Cliente guardado con éxito', 'bg-success');
+    try {
+        const { error } = await _supabase.from('clientes').insert([{ nombre, telefono }]);
+        if (error) throw error;
+
+        mostrarToast('Cliente guardado', 'bg-success');
+        
+        // Limpiar y cerrar
         document.getElementById('nuevoNombre').value = '';
         document.getElementById('nuevoTelefono').value = '';
-        bootstrap.Modal.getInstance(document.getElementById('modalNuevoCliente')).hide();
-        actualizarListaClientes();
-    }
-});
+        const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalNuevoCliente'));
+        if (modalInstance) modalInstance.hide();
 
+        await actualizarListaClientes();
+
+    } catch (err) {
+        console.error('Error:', err);
+        mostrarToast('Error al guardar', 'bg-danger');
+    } finally {
+        // ESTO ES LO QUE FALTABA: Reactivar siempre al final
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
+    }
+};
+
+// Editar un cliente
 function abrirModalEditar(nombre, telefono) {
     document.getElementById('editNombre').value = nombre;
     document.getElementById('editTelefono').value = telefono;
     new bootstrap.Modal(document.getElementById('modalEditarCliente')).show();
 }
 
-document.getElementById('btnActualizarCliente').addEventListener('click', async () => {
-    const nombre = document.getElementById('editNombre').value;
-    const telefono = document.getElementById('editTelefono').value;
+document.getElementById('btnActualizarCliente').onclick = async function () {
+    const btn = this;
+    const textoOriginal = btn.innerHTML;
 
-    const { error } = await _supabase
-        .from('clientes')
-        .update({ nombre, telefono })
-        .eq('id', clienteSeleccionadoId);
+    const nombre = document.getElementById('editNombre').value.trim();
+    const telefono = document.getElementById('editTelefono').value.trim();
 
-    if (!error) {
-        bootstrap.Modal.getInstance(document.getElementById('modalEditarCliente')).hide();
-        mostrarToast('Cliente actualizado', 'bg-success');
-        verDetalle(clienteSeleccionadoId);
+    if (!nombre) {
+        return mostrarToast('El nombre no puede estar vacío', 'bg-danger');
     }
-});
+
+    // Bloqueo y Spinner
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Actualizando...`;
+
+    try {
+        const { error } = await _supabase
+            .from('clientes')
+            .update({ nombre, telefono })
+            .eq('id', clienteSeleccionadoId);
+
+        if (error) throw error;
+
+        // ÉXITO
+        const modalEl = document.getElementById('modalEditarCliente');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
+        mostrarToast('Datos del cliente actualizados', 'bg-success');
+
+        await verDetalle(clienteSeleccionadoId);
+        await actualizarListaClientes();
+
+    } catch (err) {
+        console.error('Error al actualizar cliente:', err);
+        mostrarToast('Error al actualizar datos', 'bg-danger');
+    } finally {
+        // EL ARREGLO ESTÁ AQUÍ: 
+        // Pase lo que pase (éxito o error), el botón vuelve a su estado original
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
+    }
+};
+
+// Eliminar un cliente
 
 function confirmarEliminarCliente() {
     bootstrap.Modal.getInstance(document.getElementById('modalEditarCliente')).hide();
     new bootstrap.Modal(document.getElementById('modalConfirmarEliminar')).show();
 }
 
-async function ejecutarEliminacion() {
-    const { error } = await _supabase.from('clientes').delete().eq('id', clienteSeleccionadoId);
-    if (!error) {
-        bootstrap.Modal.getInstance(document.getElementById('modalConfirmarEliminar')).hide();
-        mostrarToast('Cliente eliminado permanentemente', 'bg-danger');
-        actualizarListaClientes();
+async function ejecutarEliminacion(btn) {
+    const boton = btn || document.getElementById('btnConfirmarEliminarCliente');
+    if (!boton) return;
+
+    const textoOriginal = boton.innerHTML;
+
+    // 1. Bloqueo y Spinner
+    boton.disabled = true;
+    boton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Eliminando todo...`;
+
+    try {
+        // 2. Paso A: Obtener IDs de todas las deudas del cliente para borrar sus abonos
+        const { data: deudas } = await _supabase
+            .from('deudas')
+            .select('id')
+            .eq('cliente_id', clienteSeleccionadoId);
+
+        if (deudas && deudas.length > 0) {
+            const idsDeudas = deudas.map(d => d.id);
+
+            // Borrar todos los abonos relacionados a esas deudas
+            await _supabase
+                .from('abonos')
+                .delete()
+                .in('deuda_id', idsDeudas);
+
+            // Borrar todas las deudas del cliente
+            await _supabase
+                .from('deudas')
+                .delete()
+                .eq('cliente_id', clienteSeleccionadoId);
+        }
+
+        // 3. Paso B: Finalmente borrar al cliente
+        const { error } = await _supabase
+            .from('clientes')
+            .delete()
+            .eq('id', clienteSeleccionadoId);
+
+        if (error) throw error;
+
+        // ÉXITO
+        const modalEl = document.getElementById('modalConfirmarEliminar');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
+        mostrarToast('Cliente y todo su historial eliminados', 'bg-danger');
+
+        // Volver a la interfaz principal
+        await actualizarListaClientes();        
+
+    } catch (err) {
+        console.error('Error al eliminar todo:', err);
+        mostrarToast('Error al eliminar los datos', 'bg-dark');
+    } finally {
+        // REESTABLECER EL BOTÓN SIEMPRE
+        boton.disabled = false;
+        boton.innerHTML = textoOriginal;
+        
+        // Refrescar reportes generales
+        cargarReportes();
     }
 }
 
@@ -152,27 +259,61 @@ async function ejecutarEliminacion() {
 async function verDetalle(clienteId) {
     document.getElementById('seccionReportes').style.display = 'none';
     clienteSeleccionadoId = clienteId;
+    
     const { data: cliente } = await _supabase.from('clientes').select('*').eq('id', clienteId).single();
     const { data: deudas } = await _supabase.from('deudas').select('*').eq('cliente_id', clienteId).order('id', { ascending: false });
 
     const panel = document.getElementById('panelDeudas');
     const iniciales = cliente.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
-    let html = `
-        <div class="cliente-activo-header shadow-sm">
-            <button class="btn-volver" onclick="actualizarListaClientes()" title="Volver a la lista">
-                <span class="text-primary fw-bold">←</span>
-            </button>
-            <div class="cliente-avatar me-3" style="width: 45px; height: 45px; font-size: 1rem;">${iniciales}</div>
-            <div class="flex-grow-1">
-                <h4 class="mb-0 fw-bold text-dark">${cliente.nombre}</h4>
-                <small class="text-muted">📞 ${cliente.telefono || 'Sin número'}</small>
-                <button class="btn btn-sm btn-link p-0 text-primary text-decoration-none ms-2" onclick="abrirModalEditar('${cliente.nombre}', '${cliente.telefono}')">Editar</button>
-            </div>
-            <button class="btn btn-primary btn-nuevo-cliente py-2 px-3" onclick="abrirModalDeuda()">+ Deuda</button>
-        </div>
-        <div class="row">`;
+    const totalGeneralCliente = deudas.reduce((acc, d) => acc + parseFloat(d.saldo_pendiente || 0), 0);
+    const colorTotal = totalGeneralCliente > 0 ? 'text-danger' : 'text-success';
 
+    const tieneTelefono = cliente.telefono && cliente.telefono.trim() !== "";
+    const nombreEscapado = cliente.nombre.replace(/'/g, "\\'");
+    const deudasJSON = JSON.stringify(deudas).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+
+    let html = `
+        <div class="cliente-activo-header shadow-sm d-flex align-items-center p-3 bg-white mb-4 flex-wrap justify-content-center justify-content-md-between" style="border-radius: 15px;">
+            
+            <div class="d-flex align-items-center flex-grow-1" style="min-width: 200px;">
+                <button class="btn-volver border-0 bg-transparent me-2 p-0" onclick="actualizarListaClientes()" title="Volver a la lista">
+                    <span class="text-primary fw-bold" style="font-size: 1.5rem;">←</span>
+                </button>
+                
+                <div class="cliente-avatar me-3 d-none d-md-flex" style="width: 50px; height: 50px; font-size: 1.1rem; align-items: center; justify-content: center; background: #e9ecef; border-radius: 50%; font-weight: bold;">
+                    ${iniciales}
+                </div>
+                
+                <div class="flex-grow-1">
+                    <h4 class="mb-0 fw-bold text-dark" style="font-size: clamp(1.1rem, 4vw, 1.25rem);">${cliente.nombre}</h4>
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <small class="text-muted">📞 ${cliente.telefono || 'Sin número'}</small>
+                        <button class="btn btn-sm btn-link p-0 text-primary text-decoration-none" onclick="abrirModalEditar('${nombreEscapado}', '${cliente.telefono || ''}')">Editar</button>
+                        
+                        ${tieneTelefono ? `
+                            <button class="btn btn-sm btn-success d-flex align-items-center gap-1 py-0 px-2 shadow-sm" 
+                                style="font-size: 0.75rem; border-radius: 20px; height: 22px; background-color: #25D366; border: none;"
+                                onclick='enviarRecordatorioWhatsApp("${nombreEscapado}", "${cliente.telefono}", ${deudasJSON})'>
+                                <span>WhatsApp</span>
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center gap-4 mt-2 mt-md-0 px-2">
+                <div class="text-end">
+                    <small class="text-muted d-block fw-bold" style="font-size: 0.7rem; text-transform: uppercase;">Saldo Total</small>
+                    <span class="${colorTotal} fw-bold h4 mb-0">${fC$(totalGeneralCliente)}</span>
+                </div>
+
+                <button class="btn btn-primary btn-nuevo-cliente py-2 px-3 fw-bold shadow-sm" style="border-radius: 10px;" onclick="abrirModalDeuda()">+ Deuda</button>
+            </div>
+        </div>
+        <div class="row m-0">`;
+
+    // ... (El resto del forEach de las deudas se mantiene igual)
     if (deudas.length === 0) {
         html += `<div class="col-12 text-center py-5"><h5 class="text-muted fw-light">Sin deudas registradas.</h5></div>`;
     } else {
@@ -184,29 +325,32 @@ async function verDetalle(clienteId) {
             const descSegura = d.descripcion ? d.descripcion.replace(/['"\\`]/g, '').replace(/\n/g, ' ') : '';
 
             html += `
-            <div class="col-md-6 mb-4">
-                <div class="card card-deuda-moderna shadow-sm">
+            <div class="col-12 col-md-6 mb-4">
+                <div class="card card-deuda-moderna shadow-sm border-0" style="border-radius: 15px;">
                     <div class="card-body p-4">
                         <div class="d-flex justify-content-between align-items-start mb-3">
-                            <span class="badge-categoria text-uppercase">${d.categoria}</span>
+                            <span class="badge bg-light text-primary text-uppercase p-2" style="font-size: 0.7rem;">${d.categoria}</span>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm text-primary p-0 fw-bold" onclick="verHistorialAbonos(${d.id})"><small>🕒 Historial</small></button>
-                                <button class="btn btn-sm text-secondary p-0" onclick="abrirModalEditarDeuda('${d.id}', '${descSegura}', ${mTotal})"><small>✏️ Editar</small></button>
+                                <button class="btn btn-sm text-secondary p-0" onclick="abrirModalEditarDeuda('${d.id}', '${descSegura}', ${mTotal}, ${sPendiente})"><small>✏️ Editar</small></button>
                             </div>
                         </div>
                         <p class="text-muted small mb-3" style="min-height: 40px;">${d.descripcion || 'Sin descripción'}</p>
                         <div class="mb-2 d-flex justify-content-between align-items-end">
                             <div>
                                 <small class="text-muted d-block mb-1">Saldo Pendiente</small>
-                                <span class="monto-principal ${colorTextoSaldo}">${fC$(sPendiente)}</span>
+                                <span class="h4 fw-bold ${colorTextoSaldo}">${fC$(sPendiente)}</span>
                                 <div class="text-muted" style="font-size: 0.8rem;">${fUS(sPendiente)}</div>
                             </div>
-                            <div class="text-end"><small class="text-muted d-block">Total: ${fC$(mTotal)}</small></div>
+                            <div class="text-end"><small class="text-muted d-block">Total inicial: ${fC$(mTotal)}</small></div>
                         </div>
-                        <div class="progress mb-4"><div class="progress-bar bg-success" style="width: ${porcentajePagado}%"></div></div>
+                        <div class="progress mb-4" style="height: 8px; border-radius: 10px;">
+                            <div class="progress-bar bg-success" style="width: ${porcentajePagado}%"></div>
+                        </div>
                         <div class="d-grid">
-                            <button class="btn btn-success" onclick="abrirAbono(${d.id}, ${sPendiente})" ${sPendiente <= 0 ? 'disabled' : ''}>
-                                ${sPendiente <= 0 ? '✅ Pagado' : 'Registrar Abono'}
+                            <button class="btn ${sPendiente <= 0 ? 'btn-outline-success' : 'btn-success'} py-2 fw-bold" 
+                                onclick="abrirAbono(${d.id}, ${sPendiente})" ${sPendiente <= 0 ? 'disabled' : ''}>
+                                ${sPendiente <= 0 ? '✅ TOTALMENTE PAGADO' : 'REGISTRAR ABONO'}
                             </button>
                         </div>
                     </div>
@@ -224,29 +368,59 @@ function abrirModalDeuda() {
     }
 }
 
-document.getElementById('btnGuardarDeuda').onclick = async () => {
+document.getElementById('btnGuardarDeuda').onclick = async function () {
+    const btn = this; 
+    const textoOriginal = btn.innerHTML;
+
+    // 1. Obtener valores
     let montoRaw = parseFloat(document.getElementById('deudaMonto').value);
     const moneda = document.getElementById('monedaDeuda').value;
+    const categoria = document.getElementById('deudaCategoria').value;
+    const descripcion = document.getElementById('deudaDescripcion').value;
 
-    // Si es dólar, convertimos a córdobas para la DB
+    // 2. Validación rápida antes de bloquear
     const montoFinal = moneda === "USD" ? montoRaw * tasaCambio : montoRaw;
+    if (!montoFinal || montoFinal <= 0) {
+        return mostrarToast('Monto inválido', 'bg-danger');
+    }
 
-    if (!montoFinal || montoFinal <= 0) return mostrarToast('Monto inválido', 'bg-danger');
+    // 3. Bloquear botón y mostrar Spinner
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...`;
 
-    const deuda = {
-        cliente_id: clienteSeleccionadoId,
-        categoria: document.getElementById('deudaCategoria').value,
-        descripcion: document.getElementById('deudaDescripcion').value,
-        monto_total: montoFinal,
-        saldo_pendiente: montoFinal
-    };
+    try {
+        const deuda = {
+            cliente_id: clienteSeleccionadoId,
+            categoria: categoria,
+            descripcion: descripcion,
+            monto_total: montoFinal,
+            saldo_pendiente: montoFinal
+        };
 
-    const { error } = await _supabase.from('deudas').insert([deuda]);
-    if (!error) {
-        bootstrap.Modal.getInstance(document.getElementById('modalNuevaDeuda')).hide();
-        verDetalle(clienteSeleccionadoId);
+        const { error } = await _supabase.from('deudas').insert([deuda]);
+
+        if (error) throw error;
+
+        // ÉXITO
+        const modalEl = document.getElementById('modalNuevaDeuda');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
         mostrarToast('Deuda guardada en C$', 'bg-success');
-        cargarReportes();
+        
+        // Refrescar datos
+        await verDetalle(clienteSeleccionadoId);
+        await cargarReportes();
+
+    } catch (err) {
+        console.error('Error al guardar deuda:', err);
+        mostrarToast('Error al conectar con la base de datos', 'bg-danger');
+    } finally {
+        // ESTO ES LO IMPORTANTE:
+        // Pase lo que pase (error o éxito), el botón recupera su estado.
+        // Así, la próxima vez que abras el modal, el botón estará listo.
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
     }
 };
 
@@ -257,19 +431,112 @@ function abrirModalEditarDeuda(id, concepto, monto) {
     new bootstrap.Modal(document.getElementById('modalEditarDeuda')).show();
 }
 
-document.getElementById('btnActualizarDeuda').addEventListener('click', async () => {
-    const { error } = await _supabase.from('deudas').update({ descripcion: document.getElementById('editDeudaConcepto').value }).eq('id', deudaSeleccionadaId);
-    if (!error) {
-        bootstrap.Modal.getInstance(document.getElementById('modalEditarDeuda')).hide();
-        verDetalle(clienteSeleccionadoId);
-    }
-});
+document.getElementById('btnActualizarDeuda').onclick = async function () {
+    const btn = this;
+    const textoOriginal = btn.innerHTML;
 
-async function ejecutarEliminacionDeuda() {
-    const { error } = await _supabase.from('deudas').delete().eq('id', deudaSeleccionadaId);
-    if (!error) {
-        bootstrap.Modal.getInstance(document.getElementById('modalConfirmarEliminarDeuda')).hide();
-        verDetalle(clienteSeleccionadoId);
+    // 1. Obtener los nuevos valores del modal
+    const nuevaDescripcion = document.getElementById('editDeudaConcepto').value;
+
+    // 2. Bloquear botón y mostrar Spinner
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Actualizando...`;
+
+    try {
+        // 3. Llamada a Supabase para actualizar descripción y saldo
+        const { error } = await _supabase
+            .from('deudas')
+            .update({
+                descripcion: nuevaDescripcion,
+            })
+            .eq('id', deudaSeleccionadaId);
+
+        if (!error) {
+            // ÉXITO
+            bootstrap.Modal.getInstance(document.getElementById('modalEditarDeuda')).hide();
+            mostrarToast('Deuda actualizada correctamente', 'bg-success');
+
+            // Refrescar la vista del cliente y los reportes generales
+            await verDetalle(clienteSeleccionadoId);
+            await cargarReportes();
+        } else {
+            throw error;
+        }
+    } catch (err) {
+        console.error('Error al actualizar:', err);
+        mostrarToast('Error al actualizar la deuda', 'bg-danger');
+
+        // Solo rehabilitamos si hubo error para que el usuario corrija
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
+    } finally {
+        // El botón se reseteará solo la próxima vez que se abra el modal, 
+        // pero por seguridad lo devolvemos a su estado original si no se cerró el modal.
+        if (btn.disabled) {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
+    }
+};
+
+function confirmarEliminarDeuda() {
+    // Cerramos el modal de edición primero
+    const modalEditar = bootstrap.Modal.getInstance(document.getElementById('modalEditarDeuda'));
+    if (modalEditar) modalEditar.hide();
+
+    // Abrimos el modal de confirmación
+    const modalConfirmar = new bootstrap.Modal(document.getElementById('modalConfirmarEliminarDeuda'));
+    modalConfirmar.show();
+}
+
+async function ejecutarEliminacionDeuda(btn) {
+    // Verificación de seguridad por si el botón no llega
+    const boton = btn || document.getElementById('btnEjecutarEliminar');
+    if (!boton) return;
+
+    const textoOriginal = boton.innerHTML;
+
+    // 1. Bloqueo y Spinner
+    boton.disabled = true;
+    boton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ELIMINANDO...`;
+
+    try {
+        // 2. Borramos abonos primero
+        const { error: errorAbonos } = await _supabase
+            .from('abonos')
+            .delete()
+            .eq('deuda_id', deudaSeleccionadaId);
+
+        if (errorAbonos) throw errorAbonos;
+
+        // 3. Borramos la deuda
+        const { error: errorDeuda } = await _supabase
+            .from('deudas')
+            .delete()
+            .eq('id', deudaSeleccionadaId);
+
+        if (errorDeuda) throw errorDeuda;
+
+        // ÉXITO
+        const modalEl = document.getElementById('modalConfirmarEliminarDeuda');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+
+        mostrarToast('Registro eliminado', 'bg-danger');
+
+        // Refrescamos la interfaz (importante el await para que no se crucen los procesos)
+        await verDetalle(clienteSeleccionadoId);
+        await cargarReportes();
+
+    } catch (err) {
+        console.error('Error al eliminar:', err);
+        mostrarToast('No se pudo eliminar', 'bg-dark');
+        // El botón se resetea en el finally, así que no hace falta ponerlo aquí
+    } finally {
+        // ESTO ES LO QUE ARREGLA EL PROBLEMA:
+        // Pase lo que pase, el botón vuelve a estar activo y con su texto original
+        boton.disabled = false;
+        boton.innerHTML = textoOriginal;
     }
 }
 
@@ -313,45 +580,63 @@ function configurarConvertidorAbono() {
 
 // ÚNICO EVENTO DE GUARDADO (Elimina cualquier otro .onclick o .addEventListener previo)
 document.getElementById('btnGuardarAbono').onclick = async function () {
+    const btn = this; // Referencia al botón (Guardar Abono)
+    const textoOriginal = btn.innerHTML;
+
     const inputMonto = document.getElementById('abonoMonto');
     const montoRaw = parseFloat(inputMonto.value);
     const moneda = document.getElementById('monedaAbono').value;
 
+    // 1. Validación rápida antes de bloquear
     if (!montoRaw || montoRaw <= 0) {
         return mostrarToast('Ingrese un monto válido', 'bg-danger');
     }
 
-    // Convertimos a córdobas solo si es necesario
+    // Convertimos a córdobas para la validación y la DB
     const montoFinalCordobas = moneda === "USD" ? montoRaw * tasaCambio : montoRaw;
 
-    // Validación de saldo (con pequeño margen de redondeo)
     if (montoFinalCordobas > (saldoActualDeuda + 0.1)) {
         return mostrarToast('El abono excede el saldo pendiente', 'bg-danger');
     }
 
-    // 1. Registrar el abono en la base de datos
-    const { error: errorAbono } = await _supabase
-        .from('abonos')
-        .insert([{
-            deuda_id: deudaSeleccionadaId,
-            monto: montoFinalCordobas // Siempre guardamos en C$ para la contabilidad
-        }]);
+    // 2. Bloqueamos el botón y ponemos el Spinner
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando...`;
 
-    if (!errorAbono) {
-        // 2. Llamar a la función SQL de Supabase para restar
+    try {
+        // 3. Registrar el abono en la base de datos
+        const { error: errorAbono } = await _supabase
+            .from('abonos')
+            .insert([{
+                deuda_id: deudaSeleccionadaId,
+                monto: montoFinalCordobas
+            }]);
+
+        if (errorAbono) throw errorAbono;
+
+        // 4. Llamar a la función SQL de Supabase para actualizar el saldo
         const { error: errorRPC } = await _supabase.rpc('registrar_pago', {
             p_deuda_id: deudaSeleccionadaId,
             p_monto: montoFinalCordobas
         });
 
-        if (!errorRPC) {
-            bootstrap.Modal.getInstance(document.getElementById('modalAbono')).hide();
-            verDetalle(clienteSeleccionadoId);
-            mostrarToast(`Abono de ${moneda === 'USD' ? '$' + montoRaw : 'C$' + montoRaw} guardado`, 'bg-success');
-            cargarReportes();
-        }
-    } else {
+        if (errorRPC) throw errorRPC;
+
+        // ÉXITO
+        bootstrap.Modal.getInstance(document.getElementById('modalAbono')).hide();
+        mostrarToast(`Abono de ${moneda === 'USD' ? '$' + montoRaw : 'C$' + montoRaw} guardado`, 'bg-success');
+
+        // Refrescar datos
+        await verDetalle(clienteSeleccionadoId);
+        await cargarReportes();
+
+    } catch (err) {
+        console.error('Error en el abono:', err);
         mostrarToast('Error al registrar abono', 'bg-danger');
+
+        // Si hay error, regresamos el botón a su estado normal para que el usuario corrija
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
     }
 };
 
@@ -512,4 +797,72 @@ async function cargarReportes() {
                 <div class="small text-danger fw-bold">${fC$(monto)}</div>
             </div>
         `).join('');
+}
+
+// Escuchar cuando cualquier modal se termina de ocultar
+document.addEventListener('hidden.bs.modal', function (event) {
+    const modalId = event.target.id;
+
+    // Si es el modal de nueva deuda o nuevo abono, limpiamos los campos
+    if (modalId === 'modalNuevaDeuda' || modalId === 'modalAbono') {
+        const formulario = event.target.querySelector('form');
+        if (formulario) {
+            formulario.reset(); // Esto limpia todos los inputs del form
+        } else {
+            // Si no usas <form>, limpiamos los inputs uno por uno
+            const inputs = event.target.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => input.value = '');
+        }
+
+        // También limpiamos los textos de ayuda (como el de la conversión de $)
+        const feedbacks = event.target.querySelectorAll('.form-text');
+        feedbacks.forEach(f => f.innerText = '');
+    }
+});
+
+// Resetear botones al abrir cualquier modal
+document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('show.bs.modal', function () {
+        const btnGuardar = this.querySelector('.btn-guardar-moderno, .btn-primary, .btn-danger');
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+            // Asegúrate de que el texto sea el correcto según el modal
+            if (this.id === 'modalNuevoCliente') btnGuardar.innerText = 'Guardar Cliente';
+            if (this.id === 'modalNuevaDeuda') btnGuardar.innerText = 'Confirmar Deuda';
+            if (this.id === 'modalAbono') btnGuardar.innerText = 'Guardar Abono';
+        }
+    });
+});
+
+function enviarRecordatorioWhatsApp(nombre, telefono, deudas) {
+    // Filtrar solo las deudas que tienen saldo pendiente
+    const deudasPendientes = deudas.filter(d => parseFloat(d.saldo_pendiente) > 0);
+    
+    if (deudasPendientes.length === 0) {
+        return mostrarToast('El cliente no tiene deudas pendientes', 'bg-success');
+    }
+
+    let totalGeneral = 0;
+    let resumenProductos = "";
+
+    deudasPendientes.forEach(d => {
+        const saldo = parseFloat(d.saldo_pendiente);
+        totalGeneral += saldo;
+        resumenProductos += `• *${d.descripcion || 'Servicio'}*: C$ ${saldo.toLocaleString()}\n`;
+    });
+
+    // Mensaje profesional y amable
+    const mensaje = encodeURIComponent(
+        `Hola *${nombre}*, te saluda *Lesly*!\n\n` +
+        `Esperamos que te encuentres muy bien. Te compartimos un pequeño resumen de tu saldo pendiente con nosotros:\n\n` +
+        `${resumenProductos}\n` +
+        `*Total a pagar: C$ ${totalGeneral.toLocaleString()}*\n\n` +
+        `Este es solo un recordatorio para tu control personal. ¡Cualquier duda quedamos a tus órdenes!`
+    );
+
+    // Formatear número (Nicaragua +505)
+    const numeroLimpio = telefono.replace(/\D/g, '');
+    const link = `https://wa.me/505${numeroLimpio}?text=${mensaje}`;
+
+    window.open(link, '_blank');
 }
